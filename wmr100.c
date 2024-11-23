@@ -38,6 +38,7 @@
 
 bool gOutputStdout = false;
 bool gOutputFile = false;
+bool gOutputTelegraf = false;
 
 /* Constants */
 
@@ -55,6 +56,8 @@ unsigned char const INIT_PACKET2[] = { 0x01, 0xd0, 0x08, 0x01, 0x00, 0x00, 0x00,
 char *const SMILIES[] = { "  ", ":D", ":(", ":|" };
 char *const TRENDS[] = { "0", "1", "-1" };
 char *const WINDIES[] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NWN" };
+
+#define DEVICE "wmr100"
 
 /* WMR */
 
@@ -266,24 +269,37 @@ void wmr_output_stdout(WMR *wmr, char *msg) {
     fflush(stdout);
 }
 
-void wmr_log_data(WMR *wmr, char *topic, char *msg) {
+void wmr_log_data(WMR *wmr, char *topic, char *msg, char *tags) {
     char timestamp[200];
     char *buf;
     struct tm *tmp;
     struct timeval tv;
 
     gettimeofday(&tv, NULL);
-    tmp = gmtime(&tv.tv_sec);
 
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tmp);
-    asprintf(&buf,
-        "{\"topic\": \"%s\", "
-        "\"timestamp\": \"%s.%06d\", "
-        "%s}",
-        topic,
-        timestamp,
-        (int)tv.tv_usec,
-        msg);
+    if (gOutputTelegraf) {
+      asprintf(&buf,
+          "%s,topic=%s,device="DEVICE"%s%s %s %u%09u",
+          topic,
+          topic,
+          ( tags==NULL ? "" : "," ),
+          ( tags==NULL ? "" : tags ),
+          msg,
+          (unsigned int)tv.tv_sec,
+          (unsigned int)tv.tv_usec);
+    }
+    else {
+      tmp = gmtime(&tv.tv_sec);
+      strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tmp);
+      asprintf(&buf,
+          "{\"topic\": \"%s\", "
+          "\"timestamp\": \"%s.%06d\", "
+          "%s}",
+          topic,
+          timestamp,
+          (int)tv.tv_usec,
+          msg);
+    }
 
     if (gOutputFile) {
         wmr_output_file(wmr, buf);
@@ -304,6 +320,7 @@ void wmr_handle_rain(WMR *wmr, unsigned char *data, int len) {
     float hour, day, total;
     int smi, sho, sda, smo, syr;
     char *msg;
+    char *tags=NULL;
 
     sensor = data[2] & 0x0f;
     power = data[2] >> 4;
@@ -319,7 +336,23 @@ void wmr_handle_rain(WMR *wmr, unsigned char *data, int len) {
     smo = data[13];
     syr = data[14] + 2000;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             ",power=%di"
+             ",rate=%di"
+             ",hour_total=%.2f"
+             ",day_total=%.2f"
+             ",all_total=%.2f"
+             ",since=%04d%02d%02d%02d%02d",
+             power, rate, hour, day, total, syr, smo, sda, sho, smi);
+        asprintf(&tags,
+             "sensor=%d, "
+             ",source="DEVICE".%d"
+             ",origin="DEVICE"",
+             sensor, sensor);
+    }
+    else {
+        asprintf(&msg,
              "\"sensor\": %d, "
              "\"power\": %d, "
              "\"rate\": %d, "
@@ -327,17 +360,21 @@ void wmr_handle_rain(WMR *wmr, unsigned char *data, int len) {
              "\"day_total\": %.2f, "
              "\"all_total\": %.2f, "
              "\"since\": \"%04d%02d%02d%02d%02d\", "
-             "\"source\": \"wmr100.%d\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE".%d\", "
+             "\"origin\": \""DEVICE"\"",
              sensor, power, rate, hour, day, total, syr, smo, sda, sho, smi, sensor);
-    wmr_log_data(wmr, "rain", msg);
+    }
+
+    wmr_log_data(wmr, "rain", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_temp(WMR *wmr, unsigned char *data, int len){
     int sensor, st, smiley, trend, humidity;
     float temp, dewpoint;
     char *msg;
+    char *tags=NULL;
 
     sensor = data[2] & 0x0f;
     st = data[2] >> 4;
@@ -353,24 +390,43 @@ void wmr_handle_temp(WMR *wmr, unsigned char *data, int len){
     dewpoint = (data[6] + ((data[7] & 0x0f) << 8)) / 10.0;
     if ((data[7] >> 4) == 0x8) dewpoint = -dewpoint;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             "smile=%di"
+             ",trend=%di"
+             ",temp=%.1f"
+             ",humidity=%di"
+             ",dewpoint=%.1f",
+             smiley, trend, temp, humidity, dewpoint);
+        asprintf(&tags,
+             "sensor=%d"
+             ",source="DEVICE".%d"
+             ",origin="DEVICE"",
+             sensor, sensor);
+    }
+    else {
+        asprintf(&msg,
              "\"sensor\": %d, "
              "\"smile\": %d, "
              "\"trend\": %d, "
              "\"temp\": %.1f, "
              "\"humidity\": %d, "
              "\"dewpoint\": %.1f, "
-             "\"source\": \"wmr100.%d\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE".%d\", "
+             "\"origin\": \""DEVICE"\"",
              sensor, smiley, trend, temp, humidity, dewpoint, sensor);
-    wmr_log_data(wmr, "temp", msg);
+    }
+
+    wmr_log_data(wmr, "temp", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_water(WMR *wmr, unsigned char *data, int len){
     int sensor;
     float temp;
     char *msg;
+    char *tags=NULL;
 
     sensor = data[2] & 0x0f;
 
@@ -378,47 +434,89 @@ void wmr_handle_water(WMR *wmr, unsigned char *data, int len){
     if ((data[4] >> 4) == 0x8)
         temp = -temp;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             "temp=%.1f",
+             temp);
+        asprintf(&tags,
+             "sensor=%d, "
+             ",source="DEVICE".%d"
+             ",origin="DEVICE"",
+             sensor, sensor);
+    }
+    else {
+        asprintf(&msg,
              "\"sensor\": %d, "
              "\"temp\": %.1f, "
-             "\"source\": \"wmr100\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE"\", "
+             "\"origin\": \""DEVICE"\"",
              sensor, temp);
-    wmr_log_data(wmr, "water", msg);
+    }
+
+    wmr_log_data(wmr, "water", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_pressure(WMR *wmr, unsigned char *data, int len){
     int pressure, forecast, alt_pressure, alt_forecast;
     char *msg;
+    char *tags=NULL;
 
     pressure = data[2] + ((data[3] & 0x0f) << 8);
     forecast = data[3] >> 4;
     alt_pressure = data[4] + ((data[5] & 0x0f) << 8);
     alt_forecast = data[5] >> 4;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             "pressure=%di"
+             ",forecast=%di"
+             ",altpressure=%di"
+             ",altforecast=%di",
+             pressure, forecast, alt_pressure, alt_forecast);
+        asprintf(&tags,
+             "source="DEVICE""
+             ",origin="DEVICE"");
+    }
+    else {
+        asprintf(&msg,
              "\"pressure\": %d, "
              "\"forecast\": %d, "
              "\"altpressure\": %d, "
              "\"altforecast\": %d, "
-             "\"source\": \"wmr100\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE"\", "
+             "\"origin\": \""DEVICE"\"",
              pressure, forecast, alt_pressure, alt_forecast);
-    wmr_log_data(wmr, "pressure", msg);
+    }
+
+    wmr_log_data(wmr, "pressure", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_uv(WMR *wmr, unsigned char *data, int len){
     char *msg;
+    char *tags=NULL;
 
-    asprintf(&msg, "\"todo\": 1");
-    wmr_log_data(wmr, "uv", msg);
+    if (gOutputTelegraf) {
+        asprintf(&msg, "todo=1");
+        asprintf(&tags,
+             "source="DEVICE""
+             ",origin="DEVICE"");
+    }
+    else {
+        asprintf(&msg, "\"todo\": 1");
+    }
+
+    wmr_log_data(wmr, "uv", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_wind(WMR *wmr, unsigned char *data, int len){
     char *msg;
+    char *tags=NULL;
     int wind_dir, power, low_speed, high_speed;
     float wind_speed, avg_speed;
 
@@ -431,21 +529,37 @@ void wmr_handle_wind(WMR *wmr, unsigned char *data, int len){
     high_speed = data[6] << 4;
     avg_speed = (high_speed + low_speed) / 10.0;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             "power=%di"
+             ",dir=%di"
+             ",speed=%.1f"
+             ",avgspeed=%.1f",
+             power, wind_dir, wind_speed, avg_speed);
+        asprintf(&tags,
+             "source="DEVICE""
+             ",origin="DEVICE"");
+    }
+    else {
+        asprintf(&msg,
              "\"power\": %d, "
              "\"dir\": %d, "
              "\"speed\": %.1f, "
              "\"avgspeed\": %.1f, "
-             "\"source\": \"wmr100\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE"\", "
+             "\"origin\": \""DEVICE"\"",
              power, wind_dir, wind_speed, avg_speed);
-    wmr_log_data(wmr, "wind", msg);
+    }
+
+    wmr_log_data(wmr, "wind", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 void wmr_handle_clock(WMR *wmr, unsigned char *data, int len){
     int power, powered, battery, rf, level, mi, hr, dy, mo, yr;
     char *msg;
+    char *tags=NULL;
 
     power = data[0] >> 4;
     powered = power >> 3;
@@ -459,17 +573,33 @@ void wmr_handle_clock(WMR *wmr, unsigned char *data, int len){
     mo = data[7];
     yr = data[8] + 2000;
 
-    asprintf(&msg,
+    if (gOutputTelegraf) {
+        asprintf(&msg,
+             "at=%04d%02d%02d%02d%02di"
+             ",powered=%di"
+             ",battery=%di"
+             ",rf=%di"
+             ",level=%di",
+             yr, mo, dy, hr, mi, powered, battery, rf, level);
+        asprintf(&tags,
+             "source="DEVICE""
+             ",origin="DEVICE"");
+    }
+    else {
+        asprintf(&msg,
              "\"at\": \"%04d%02d%02d%02d%02d\", "
              "\"powered\": %d, "
              "\"battery\": %d, "
              "\"rf\": %d, "
              "\"level\": %d, "
-             "\"source\": \"wmr100\", "
-             "\"origin\": \"wmr100\"",
+             "\"source\": \""DEVICE"\", "
+             "\"origin\": \""DEVICE"\"",
              yr, mo, dy, hr, mi, powered, battery, rf, level);
-    wmr_log_data(wmr, "clock", msg);
+    }
+
+    wmr_log_data(wmr, "clock", msg, tags);
     free(msg);
+    if (tags) free(tags);
 }
 
 /****************************
@@ -601,20 +731,24 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, cleanup);
 
     /* Parse the command line parameters */
-    while ((c = getopt(argc, argv, "hsfd:")) != -1)
+    while ((c = getopt(argc, argv, "hsft")) != -1)
     {
         switch (c)
         {
         case 'h':
             fprintf(stderr, "Options:\n"
-                "\t-s: output to sdtout only\n"
-                "\t-f: output to file only\n");
+                "\t-s: output to stdout only\n"
+                "\t-f: output to file only\n"
+                "\t-t: output telegraf-line format (default JSON)\n");
             return 1;
         case 's':
             gOutputStdout = true;
             break;
         case 'f':
             gOutputFile = true;
+            break;
+        case 't':
+            gOutputTelegraf = true;
             break;
         case '?':
             if (isprint(optopt))
@@ -644,7 +778,7 @@ int main(int argc, char* argv[]) {
     if (gOutputFile)
         fprintf(stderr, "- File\n");
 
-    fprintf(stderr, "Opening WMR100...\n");
+    fprintf(stderr, "Opening "DEVICE"...\n");
     ret = wmr_init(wmr);
     if (ret != 0) {
         perror("Failed to init USB device, exiting.");
@@ -655,7 +789,7 @@ int main(int argc, char* argv[]) {
     wmr_print_state(wmr);
     wmr_process(wmr);
     wmr_close(wmr);
-    fprintf(stderr, "Closed WMR100\n");
+    fprintf(stderr, "Closed "DEVICE"\n");
 
     return 0;
 }
