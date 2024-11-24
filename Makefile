@@ -1,8 +1,12 @@
 CFLAGS += `pkg-config libhid --cflags` -pedantic -Wall -D_GNU_SOURCE
 LIBS += `pkg-config libhid --libs` -lpthread
 
+ifndef CC
+  CC = cc
+endif
+
 wmr100: wmr100.c
-	cc ${CFLAGS} -o wmr100 wmr100.c ${LIBS}
+	${CC} ${CFLAGS} ${LIBS} -o wmr100 wmr100.c
 
 clean:
 	-rm wmr100
