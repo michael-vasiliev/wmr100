@@ -5,8 +5,12 @@ ifndef CC
   CC = cc
 endif
 
+ifndef BUILD
+  BUILD = .
+endif
+
 wmr100: wmr100.c
-	${CC} ${CFLAGS} ${LIBS} -o wmr100 wmr100.c
+	${CC} ${CFLAGS} ${LIBS} -o ${BUILD}/wmr100 wmr100.c
 
 clean:
 	-rm wmr100
