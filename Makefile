@@ -33,6 +33,6 @@ unsetup_osx:
 	echo Please reboot for changes to take effect.
 
 install:
-    -mkdir -p ${BUILDROOT}/${BINDIR}/
-    -cp -f ${BUILD}/${NAME} ${BUILDROOT}/${BINDIR}/
-    -chmod 755 ${BUILDROOT}/${BINDIR}/${NAME}
+	-mkdir -p ${BUILDROOT}/${BINDIR}/
+	-cp -f ${BUILD}/${NAME} ${BUILDROOT}/${BINDIR}/
+	-chmod 755 ${BUILDROOT}/${BINDIR}/${NAME}
