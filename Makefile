@@ -12,10 +12,6 @@ ifndef BUILD
   BUILD = .
 endif
 
-ifndef BUILDROOT
-  BUILDROOT = BUILDROOT
-endif
-
 wmr100: wmr100.c
 	${CC} ${CFLAGS} ${LIBS} -o ${BUILD}/${NAME} wmr100.c
 
@@ -32,7 +28,11 @@ unsetup_osx:
 	sudo touch /System/Library/Extensions
 	echo Please reboot for changes to take effect.
 
+ifdef PREFIX
+
 install:
-	-mkdir -p ${BUILDROOT}/${BINDIR}/
-	-cp -f ${BUILD}/${NAME} ${BUILDROOT}/${BINDIR}/
-	-chmod 755 ${BUILDROOT}/${BINDIR}/${NAME}
+	-mkdir -p ${PREFIX}/bin
+	-cp -f ${BUILD}/${NAME} ${PREFIX}/bin/
+	-chmod 755 ${PREFIX}/bin/${NAME}
+
+endif
