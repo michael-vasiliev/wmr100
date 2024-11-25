@@ -8,6 +8,10 @@ ifndef CC
   CC = cc
 endif
 
+ifndef STRIP
+  STRIP = strip
+endif
+
 ifndef BUILD
   BUILD = .
 endif
@@ -32,7 +36,10 @@ ifdef PREFIX
 
 install:
 	-mkdir -p ${PREFIX}/bin
-	-cp -f ${BUILD}/${NAME} ${PREFIX}/bin/
+	cp -f ${BUILD}/${NAME} ${PREFIX}/bin/
 	-chmod 755 ${PREFIX}/bin/${NAME}
+
+install-strip: install
+	${STRIP} ${PREFIX}/bin/${NAME}
 
 endif
